@@ -1,9 +1,9 @@
 
-# 🦺 SafetyWatch — Construction PPE Detection
+# SafetyWatch — Construction PPE Detection
 
 Real-time helmet and safety compliance detection using YOLOv8 with two-phase transfer learning. Built end-to-end: data engineering, baseline training, fine-tuning, evaluation, and deployment.
 
-**Live demo:** [your-app-name.streamlit.app](https://namelater-rh7srveanv4lju4w4cuzol.streamlit.app/) *(update with your actual link)*
+**Live demo:** [Safety Watch](https://namelater-rh7srveanv4lju4w4cuzol.streamlit.app/)
 
 ---
 
