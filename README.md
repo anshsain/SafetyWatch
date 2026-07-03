@@ -1,142 +1,117 @@
-
-# SafetyWatch — Construction PPE Detection
-
-Real-time helmet and safety compliance detection using YOLOv8 with two-phase transfer learning. Built end-to-end: data engineering, baseline training, fine-tuning, evaluation, and deployment.
-
-**Live demo:** [Safety Watch](https://namelater-rh7srveanv4lju4w4cuzol.streamlit.app/)
-
+# 🦺 SafetyWatch — Construction PPE Detection
+ 
+Real-time helmet compliance detection using YOLOv8 with two-phase transfer learning. Detects whether workers on construction sites are wearing helmets, and reports a site-level compliance percentage.
+ 
+**Live demo:** [your-app-name.streamlit.app](https://your-app-name.streamlit.app) *(update with your actual link)*
+ 
 ---
-
+ 
 ## Overview
-
-SafetyWatch detects personal protective equipment (PPE) compliance on construction sites by identifying whether workers are wearing helmets. It classifies every detected head as either a helmet (compliant) or a bare head (violation), and reports an overall site compliance percentage.
-
+ 
 | | |
 |---|---|
-| **Task** | Object detection (3 classes) |
-| **Architecture** | YOLOv8n with two-phase transfer learning |
-| **Dataset** | Hard Hat Workers (Roboflow), 7,000+ images |
-| **mAP@50** | 64.3% |
-| **Helmet AP@50** | 94.5% |
-| **Head (violation) AP@50** | 96.4% |
+| **Task** | Object detection (2 classes) |
+| **Architecture** | YOLOv8n, two-phase transfer learning |
+| **Dataset** | SHEL5K (Mendeley, DOI 10.17632/9rcv8mm682.4) |
+| **mAP@50** | 89.6% |
+| **Helmet AP@50** | 87.2% |
+| **No-helmet AP@50** | 92.0% |
 | **Deployment** | Streamlit Community Cloud |
-
+ 
 ---
-
+ 
 ## Classes
-
-| Class | Meaning |
-|---|---|
-| `helmet` | Worker wearing a hard hat — PPE compliant |
-| `head` | Bare head detected — safety violation |
-| `person` | Full body bounding box |
-
----
-
-## Architecture & Training Strategy
-
-The model uses a **two-phase transfer learning** approach rather than training end-to-end from scratch:
-
-**Phase 1 — Warm-up (15 epochs).** The first 9 backbone layers of YOLOv8n are frozen, so only the neck and detection head are trained. This stabilises the new task-specific layers without disturbing the pretrained COCO features in the backbone.
-
-**Phase 2 — Fine-tuning (50 epochs).** All layers are unfrozen and trained end-to-end at a 10x lower learning rate (1e-4 vs 1e-3), allowing the backbone to adapt to the construction-site domain without catastrophic forgetting.
-
-This freeze-then-unfreeze strategy is a standard transfer learning technique that gives more stable convergence than fine-tuning every layer from the first epoch.
-
----
-
-## Results
-
-### Per-class performance
-
-| Class | AP@50 | Notes |
+ 
+| Class | Meaning | Box style |
 |---|---|---|
-| helmet | 94.5% | Strong, well-represented class |
-| head | 96.4% | Strong, well-represented class |
-| person | 2.0% | Severely limited by class imbalance (see below) |
-
-### Overall metrics
-
+| `helmet` | Worker wearing a hard hat — compliant | Full head-region box |
+| `no_helmet` | Bare head — safety violation | Full head-region box |
+ 
+Both classes use the same full-head-region bounding box annotation style. This is deliberate — see the lessons-learned section below for why it matters.
+ 
+---
+ 
+## Results
+ 
 | Metric | Value |
 |---|---|
-| mAP@50 | 64.3% |
-| mAP@50-95 | 42.6% |
-| Precision | 62.1% |
-| Recall | 61.6% |
-| Inference speed | ~4ms/image (GPU) |
-
-### Confusion matrix
-
-Helmet and head are rarely confused with each other — only about 2% of helmet instances are misclassified as head and vice versa, which is the property that matters most for a compliance-monitoring use case.
-
+| mAP@50 | 89.6% |
+| mAP@50-95 | 64.3% |
+| Precision | 87.2% |
+| Recall | 85.7% |
+| Inference speed | ~4ms/image |
+ 
+| Class | AP@50 | Test instances |
+|---|---|---|
+| helmet | 87.2% | 5,783 |
+| no_helmet | 92.0% | 3,156 |
+ 
+`no_helmet` AP is slightly higher than `helmet` despite being the minority class, suggesting bare heads are a visually distinctive pattern that the model converges on efficiently even with less data.
+ 
 ---
-
-## Known limitation: class imbalance
-
-The `person` class has only 615 training instances versus 16,833 for `head` — a **27.4x imbalance**. This is a property of the source dataset, not a modelling failure: the dataset was originally curated for helmet/head detection, with `person` boxes annotated inconsistently as a secondary class.
-
-This was confirmed through evaluation, not assumed:
-- Per-class AP and precision-recall curves showed `person` recall near zero across all confidence thresholds
-- Instance counts per split confirmed the imbalance ratio
-- GRAD-CAM activations remained correctly localised on heads, ruling out a backbone or label-quality issue
-
-For production use, the `person` class should either be dropped, with `helmet`/`head` used as the two real detection targets, or rebalanced with additional annotated data.
-
+ 
+## Architecture & Training Strategy
+ 
+**Two-phase transfer learning** on YOLOv8n pretrained on COCO:
+ 
+**Phase 1 (15 epochs):** First 9 backbone layers frozen. Only the neck and detection head train, stabilising the new task-specific layers before touching the pretrained backbone features. LR: 1e-3.
+ 
+**Phase 2 (50 epochs):** All layers unfrozen. Full end-to-end fine-tuning at 10× lower LR (1e-4), allowing the backbone to adapt to the construction-site domain without catastrophic forgetting.
+ 
 ---
-
-## Project structure
-
+ 
+## Lessons Learned — Why the Dataset Choice Matters
+ 
+The first version of this model was trained on the **Hard Hat Workers dataset** (Roboflow, 7,000+ images). Post-deployment testing revealed a systematic failure: the model correctly identified helmeted workers as violations on real-world images with near-perfect confidence.
+ 
+**Root cause — annotation convention mismatch.** In that dataset, `helmet` was annotated as a tight box around just the helmet piece (small, top-of-head), while `head` was annotated as a larger box covering the entire face and head region. The model learned this **box-size convention** rather than the actual safety concept — when it saw a head-region box at inference time, it predicted `head` (violation) regardless of whether a helmet was visible, because that's what matched the training distribution.
+ 
+This failure was invisible in offline evaluation because the test set came from the same dataset with the same annotation style, so IoU matching worked correctly and yielded a plausible-looking 64.3% mAP. But it failed entirely on independently sourced construction-site photos.
+ 
+**The fix — SHEL5K.** SHEL5K (Safety Helmet and ELD-5K) explicitly separates `head with helmet` and `head without helmet` as distinct classes using consistent full-head-region boxes throughout — forcing the model to learn whether a helmet is present on a head, not the shape of the box drawn around it. Retraining on SHEL5K raised mAP to 89.6% and, more importantly, produced a model that generalises correctly to real-world images across all helmet colours and angles.
+ 
+**Key takeaway.** Offline metrics don't always predict production behaviour. Distribution shift caused by annotation-convention inconsistency between the training dataset and inference-time inputs is a real failure mode that doesn't surface in held-out test sets drawn from the same annotation pool. The correct diagnostic was testing on independently sourced images, not on the original dataset's test split.
+ 
+---
+ 
+## Project Structure
+ 
 ```
 .
-├── app.py                    # Streamlit application
-├── requirements.txt          # Python dependencies
-├── best.pt                   # Trained model weights (YOLOv8n, two-phase)
+├── app.py                      # Streamlit application
+├── requirements.txt            # Python dependencies
+├── best.pt                     # Trained YOLOv8n weights (SHEL5K, two-phase)
 └── notebooks/
-    ├── layer1_setup.ipynb       # Dataset download, EDA, augmentation preview
-    ├── layer2_baseline.ipynb    # Baseline YOLOv8n training (50 epochs)
-    ├── layer3_resnet50.ipynb    # Two-phase transfer learning
-    ├── layer4_gradcam.ipynb     # GRAD-CAM, PR curves, confusion matrix, failure analysis
-    └── layer5_deploy.ipynb      # Hugging Face / Streamlit deployment automation
+    ├── layer1_setup.ipynb         # SHEL5K download, annotation remapping, EDA
+    ├── layer2_baseline.ipynb      # Baseline YOLOv8n training + evaluation
+    ├── layer3_resnet50.ipynb      # Two-phase transfer learning
+    ├── layer4_gradcam.ipynb       # GRAD-CAM, PR curves, confusion matrix
+    └── layer5_deploy.ipynb        # Streamlit deployment automation
 ```
-
+ 
 ---
-
-## Running locally
-
+ 
+## Running Locally
+ 
 ```bash
 git clone https://github.com/your-username/safetywatch-ppe.git
 cd safetywatch-ppe
 pip install -r requirements.txt
 streamlit run app.py
 ```
-
-The app loads `best.pt` from the repo root automatically — no path configuration needed.
-
+ 
 ---
-
-## App features
-
-**Image detection.** Upload a JPG/PNG, run inference, and view bounding boxes with class labels and confidence scores. The sidebar shows a live compliance summary: helmet count, violation count, and overall compliance percentage.
-
-**Video detection.** Upload an MP4/AVI/MOV file for frame-by-frame detection, with a downloadable annotated output video.
-
-**Model insights.** Static dashboard of per-class AP, overall metrics, and a summary of the two-phase training strategy.
-
+ 
+## App Features
+ 
+**Image detection.** Upload a JPG/PNG → bounding boxes with class labels → compliance dashboard (helmet count, violation count, % compliance, inference time in ms).
+ 
+**Video detection.** Upload MP4/AVI/MOV → frame-by-frame detection → downloadable annotated video.
+ 
+**Model insights.** Per-class AP bars, overall metrics table, training strategy summary.
+ 
 ---
-
-## Reproducing the training pipeline
-
-The four training notebooks are designed to run sequentially in Google Colab with a T4 GPU, using Google Drive for persistent storage between sessions.
-
-1. **Layer 1** downloads the dataset via the Roboflow API and runs exploratory data analysis (class distribution, bounding box size statistics, augmentation preview).
-2. **Layer 2** trains the baseline YOLOv8n model for 50 epochs and saves benchmark metrics to `baseline_benchmark.json`.
-3. **Layer 3** loads that benchmark and runs the two-phase fine-tuning strategy described above, then compares results against the baseline.
-4. **Layer 4** produces GRAD-CAM heatmaps, precision-recall curves, a confusion matrix, and a class imbalance analysis — going beyond headline metrics to explain *why* the model performs the way it does.
-
-Each notebook re-derives all file paths at runtime, so they can be run independently as long as the previous layer's outputs exist in Drive.
-
----
-
-## Tech stack
-
-PyTorch · Ultralytics YOLOv8 · OpenCV · Streamlit · Roboflow · Google Colab (T4 GPU)
+ 
+## Tech Stack
+ 
+PyTorch · Ultralytics YOLOv8 · OpenCV · Streamlit · SHEL5K · Google Colab (T4 GPU)
