@@ -2,7 +2,7 @@
  
 Real-time helmet compliance detection using YOLOv8 with two-phase transfer learning. Detects whether workers on construction sites are wearing helmets, and reports a site-level compliance percentage.
  
-**Live demo:** [Safety Watch](https://safetywatch-fmqd6uqnkrcbqskbgirwh5.streamlit.app/) *(update with your actual link)*
+**Live demo:** [Safety Watch](https://safetywatch-fmqd6uqnkrcbqskbgirwh5.streamlit.app/)
  
 ---
  
