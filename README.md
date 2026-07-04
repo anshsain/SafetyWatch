@@ -94,7 +94,7 @@ This failure was invisible in offline evaluation because the test set came from 
 ## Running Locally
  
 ```bash
-git clone https://github.com/your-username/safetywatch-ppe.git
+git clone https://github.com/anshsain/safetywatch-ppe.git
 cd safetywatch-ppe
 pip install -r requirements.txt
 streamlit run app.py
