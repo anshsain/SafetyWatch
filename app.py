@@ -181,7 +181,9 @@ def run_inference(model, img_array, conf_thresh, iou_thresh):
     """Run YOLO inference and return annotated image + detections."""
     t0     = time.time()
     result = model.predict(img_array, conf=conf_thresh,
-                           iou=iou_thresh, verbose=False)[0]
+                       iou=iou_thresh,
+                       agnostic_nms=True,
+                       verbose=False)[0]
     ms     = (time.time() - t0) * 1000
 
     annotated = img_array.copy()
